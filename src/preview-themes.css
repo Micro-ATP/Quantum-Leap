@@ -495,7 +495,8 @@ html[data-preview-theme][data-color-theme="light"] .about-dialog h2 {
 html[data-preview-theme][data-color-theme="light"] .settings-section-label,
 html[data-preview-theme][data-color-theme="light"] .about-version,
 html[data-preview-theme][data-color-theme="light"] .about-copyright,
-html[data-preview-theme][data-color-theme="light"] .about-subtitle {
+html[data-preview-theme][data-color-theme="light"] .about-subtitle,
+html[data-preview-theme][data-color-theme="light"] .update-release {
   color: rgba(52, 78, 102, 0.52);
 }
 
@@ -539,6 +540,31 @@ html[data-preview-theme][data-color-theme="light"] .about-close {
 
 html[data-preview-theme][data-color-theme="light"] .project-link {
   color: #2679ad;
+}
+
+html[data-preview-theme][data-color-theme="light"] .update-icon {
+  color: #328dc3;
+  filter: drop-shadow(0 9px 16px rgba(47, 130, 190, 0.16));
+}
+
+html[data-preview-theme][data-color-theme="light"] .update-status {
+  color: rgba(43, 70, 94, 0.68);
+}
+
+html[data-preview-theme][data-color-theme="light"] .update-status.is-behind {
+  color: #087a68;
+}
+
+html[data-preview-theme][data-color-theme="light"] .update-status.is-ahead {
+  color: #2f68b5;
+}
+
+html[data-preview-theme][data-color-theme="light"] .update-status.is-equal {
+  color: #287452;
+}
+
+html[data-preview-theme][data-color-theme="light"] .update-status.is-error {
+  color: #a1542e;
 }
 
 html[data-preview-theme][data-color-theme="light"] h1,

@@ -3,12 +3,16 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { AnimatePresence, motion } from "framer-motion";
 import Activity from "lucide-react/dist/esm/icons/activity.js";
 import ChevronDown from "lucide-react/dist/esm/icons/chevron-down.js";
+import CircleAlert from "lucide-react/dist/esm/icons/circle-alert.js";
+import Download from "lucide-react/dist/esm/icons/download.js";
 import ExternalLink from "lucide-react/dist/esm/icons/external-link.js";
 import Info from "lucide-react/dist/esm/icons/info.js";
+import LoaderCircle from "lucide-react/dist/esm/icons/loader-circle.js";
 import Moon from "lucide-react/dist/esm/icons/moon.js";
+import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw.js";
 import Sun from "lucide-react/dist/esm/icons/sun.js";
 import X from "lucide-react/dist/esm/icons/x.js";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import packageMetadata from "../../package.json";
 import appIcon from "../../src-tauri/icons/128x128.png";
 import { useI18n, type UiLanguage } from "../lib/i18n";
@@ -20,8 +24,20 @@ import {
   type ResolvedTheme,
   type ThemeMode
 } from "../lib/theme";
+import { compareVersions, type VersionRelation } from "../lib/version";
 
 const PROJECT_URL = "https://github.com/Anti2077/Quantum-Leap";
+const LATEST_RELEASE_URL = `${PROJECT_URL}/releases/latest`;
+const LATEST_RELEASE_API_URL = "https://api.github.com/repos/Anti2077/Quantum-Leap/releases/latest";
+
+type UpdateState =
+  | { phase: "checking" }
+  | { phase: "failed" }
+  | { phase: "ready"; relation: VersionRelation; releaseVersion: string };
+
+interface LatestReleaseResponse {
+  tag_name?: string;
+}
 
 export function AppSettings({
   open,
@@ -34,7 +50,9 @@ export function AppSettings({
 }) {
   const { language, setLanguage, t } = useI18n();
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [updateOpen, setUpdateOpen] = useState(false);
   const [version, setVersion] = useState(packageMetadata.version);
+  const [updateState, setUpdateState] = useState<UpdateState>({ phase: "checking" });
   const [theme, updateTheme] = useState<{ mode: ThemeMode; resolved: ResolvedTheme }>(() => {
     const mode = getThemeMode();
     return { mode, resolved: resolveTheme(mode) };
@@ -44,14 +62,55 @@ export function AppSettings({
 
   useEffect(() => subscribeTheme((mode, resolved) => updateTheme({ mode, resolved })), []);
 
+  const resolveAppVersion = useCallback(async () => {
+    if (!("__TAURI_INTERNALS__" in window)) return packageMetadata.version;
+
+    try {
+      const appVersion = await getVersion();
+      setVersion(appVersion);
+      return appVersion;
+    } catch {
+      setVersion(packageMetadata.version);
+      return packageMetadata.version;
+    }
+  }, []);
+
+  const checkForUpdates = useCallback(async () => {
+    setUpdateState({ phase: "checking" });
+
+    try {
+      const [appVersion, response] = await Promise.all([
+        resolveAppVersion(),
+        fetch(LATEST_RELEASE_API_URL, {
+          headers: { Accept: "application/vnd.github+json" }
+        })
+      ]);
+      if (!response.ok) throw new Error(`GitHub API returned ${response.status}`);
+
+      const release = await response.json() as LatestReleaseResponse;
+      const releaseVersion = release.tag_name?.trim();
+      const relation = releaseVersion ? compareVersions(appVersion, releaseVersion) : null;
+      if (!releaseVersion || !relation) throw new Error("GitHub release version is invalid");
+
+      setUpdateState({ phase: "ready", relation, releaseVersion });
+    } catch {
+      setUpdateState({ phase: "failed" });
+    }
+  }, [resolveAppVersion]);
+
   useEffect(() => {
-    if (!open && !aboutOpen) return;
+    void checkForUpdates();
+  }, [checkForUpdates]);
+
+  useEffect(() => {
+    if (!open && !aboutOpen && !updateOpen) return;
     const handlePointerDown = (event: PointerEvent) => {
       if (open && !controlRef.current?.contains(event.target as Node)) onOpenChange(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (aboutOpen) setAboutOpen(false);
+      if (updateOpen) setUpdateOpen(false);
+      else if (aboutOpen) setAboutOpen(false);
       else if (open) onOpenChange(false);
     };
     document.addEventListener("pointerdown", handlePointerDown);
@@ -60,16 +119,7 @@ export function AppSettings({
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [aboutOpen, onOpenChange, open]);
-
-  useEffect(() => {
-    if (!aboutOpen) return;
-    if ("__TAURI_INTERNALS__" in window) {
-      void getVersion().then(setVersion).catch(() => setVersion(packageMetadata.version));
-    } else {
-      setVersion(packageMetadata.version);
-    }
-  }, [aboutOpen]);
+  }, [aboutOpen, onOpenChange, open, updateOpen]);
 
   const toggleSystemTheme = () => {
     if (theme.mode === "auto") setThemeMode(theme.resolved);
@@ -86,9 +136,19 @@ export function AppSettings({
     setAboutOpen(true);
   };
 
+  const showUpdates = () => {
+    onOpenChange(false);
+    setUpdateOpen(true);
+  };
+
   const openProjectHomepage = () => {
     if ("__TAURI_INTERNALS__" in window) void openUrl(PROJECT_URL);
     else window.open(PROJECT_URL, "_blank", "noopener,noreferrer");
+  };
+
+  const openLatestRelease = () => {
+    if ("__TAURI_INTERNALS__" in window) void openUrl(LATEST_RELEASE_URL);
+    else window.open(LATEST_RELEASE_URL, "_blank", "noopener,noreferrer");
   };
 
   return (
@@ -163,6 +223,11 @@ export function AppSettings({
                 <span>{t("about")}</span>
                 <ChevronDown size={13} aria-hidden="true" />
               </button>
+              <button type="button" className="about-menu-item" onClick={showUpdates}>
+                <Download size={15} aria-hidden="true" />
+                <span>{t("checkForUpdates")}</span>
+                <ChevronDown size={13} aria-hidden="true" />
+              </button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -209,6 +274,83 @@ export function AppSettings({
                 {t("projectHomepage")}
                 <ExternalLink size={13} aria-hidden="true" />
               </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {updateOpen && (
+          <motion.div
+            className="confirm-backdrop about-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setUpdateOpen(false);
+            }}
+          >
+            <motion.div
+              className="about-dialog update-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="update-title"
+              initial={{ opacity: 0, y: 14, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ type: "spring", stiffness: 320, damping: 28 }}
+            >
+              <button
+                type="button"
+                className="about-close"
+                onClick={() => setUpdateOpen(false)}
+                aria-label={t("close")}
+                title={t("close")}
+                autoFocus
+              >
+                <X size={15} />
+              </button>
+              <Download className="update-icon" size={44} aria-hidden="true" />
+              <h2 id="update-title">{t("checkForUpdates")}</h2>
+              <p className="about-version">{t("version", { version })}</p>
+
+              {updateState.phase === "checking" && (
+                <p className="update-status" role="status">
+                  <LoaderCircle className="update-spinner" size={14} aria-hidden="true" />
+                  {t("checkingForUpdates")}
+                </p>
+              )}
+              {updateState.phase === "failed" && (
+                <>
+                  <p className="update-status is-error" role="status">
+                    <CircleAlert size={14} aria-hidden="true" />
+                    {t("updateCheckFailed")}
+                  </p>
+                  <button type="button" className="project-link" onClick={() => void checkForUpdates()}>
+                    <RefreshCw size={13} aria-hidden="true" />
+                    {t("retry")}
+                  </button>
+                </>
+              )}
+              {updateState.phase === "ready" && (
+                <>
+                  <p className="update-release">{t("latestRelease", { version: updateState.releaseVersion })}</p>
+                  <p className={`update-status is-${updateState.relation}`} role="status">
+                    {updateState.relation === "behind" && <Download size={14} aria-hidden="true" />}
+                    {updateState.relation === "ahead" && <Info size={14} aria-hidden="true" />}
+                    {updateState.relation === "equal" && <Info size={14} aria-hidden="true" />}
+                    {updateState.relation === "behind"
+                      ? t("updateAvailable")
+                      : updateState.relation === "ahead"
+                        ? t("developmentVersion")
+                        : t("upToDate")}
+                  </p>
+                  <button type="button" className="project-link" onClick={openLatestRelease}>
+                    {t("openLatestRelease")}
+                    <ExternalLink size={13} aria-hidden="true" />
+                  </button>
+                </>
+              )}
             </motion.div>
           </motion.div>
         )}
